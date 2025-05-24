@@ -10,6 +10,9 @@ const CONSUMER_KEY = process.env.CONSUMER_KEY;
 const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
 const CALLBACK_URL = process.env.CALLBACK_URL || "https://example.com/auth/callback";
 
+// ←★ここにWebhook URLを設定
+const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec";
+
 const oauth = OAuth({
   consumer: { key: CONSUMER_KEY, secret: CONSUMER_SECRET },
   signature_method: "HMAC-SHA1",
@@ -58,15 +61,21 @@ app.get("/auth/callback", async (req, res) => {
     })
   );
 
-try {
-  const response = await axios.post(requestData.url, null, { headers });
-  console.log("Access Token Response:", response.data);
-  const params = new URLSearchParams(response.data);
-  const userId = params.get("userID") || params.get("user_id");
-  res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId}</strong></p>`);
-} catch (error) {
-  res.status(500).send("OAuth access_token failed: " + error.message);
-}
+  try {
+    const response = await axios.post(requestData.url, null, { headers });
+    console.log("Access Token Response:", response.data);
+    const params = new URLSearchParams(response.data);
+    const userId = params.get("userID") || params.get("user_id");
+
+    // Google Sheets に送信
+    if (userId) {
+      await axios.post(webhookURL, { userId });
+    }
+
+    res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId}</strong></p>`);
+  } catch (error) {
+    res.status(500).send("OAuth access_token failed: " + error.message);
+  }
 });
 
 app.listen(port, () => {
