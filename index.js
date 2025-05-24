@@ -58,14 +58,15 @@ app.get("/auth/callback", async (req, res) => {
     })
   );
 
-  try {
-    const response = await axios.post(requestData.url, null, { headers });
-    const params = new URLSearchParams(response.data);
-    const userId = params.get("userID");
-    res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId}</strong></p>`);
-  } catch (error) {
-    res.status(500).send("OAuth access_token failed: " + error.message);
-  }
+try {
+  const response = await axios.post(requestData.url, null, { headers });
+  console.log("Access Token Response:", response.data);
+  const params = new URLSearchParams(response.data);
+  const userId = params.get("userID") || params.get("user_id");
+  res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId}</strong></p>`);
+} catch (error) {
+  res.status(500).send("OAuth access_token failed: " + error.message);
+}
 });
 
 app.listen(port, () => {
