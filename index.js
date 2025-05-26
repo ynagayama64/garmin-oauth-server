@@ -3,7 +3,7 @@ const OAuth = require("oauth-1.0a");
 const crypto = require("crypto");
 const axios = require("axios");
 
-const app = express();  // ← 重要！エラーの原因はこれがなかったため
+const app = express();
 const port = process.env.PORT || 3000;
 
 const CONSUMER_KEY = process.env.CONSUMER_KEY;
@@ -13,7 +13,7 @@ const CALLBACK_URL = process.env.CALLBACK_URL || "https://garmin-oauth-server.on
 // Garmin Webhook 受信先（Google Apps Script）
 const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec";
 
-// OAuth初期化
+// OAuth 初期化
 const oauth = OAuth({
   consumer: { key: CONSUMER_KEY, secret: CONSUMER_SECRET },
   signature_method: "HMAC-SHA1",
@@ -24,6 +24,14 @@ const oauth = OAuth({
 
 // リクエストトークンとシークレットを一時保存
 let requestTokenStore = {};
+
+// トップページ（初期表示）
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>Garmin OAuth Server is running.</h1>
+    <p>Garminと連携するには <a href="/auth/start">/auth/start</a> をクリックしてください。</p>
+  `);
+});
 
 // 認証開始
 app.get("/auth/start", async (req, res) => {
@@ -78,7 +86,10 @@ app.get("/auth/callback", async (req, res) => {
       await axios.post(webhookURL, { userId });
     }
 
-    res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId || '（取得失敗）'}</strong></p>`);
+    res.send(`
+      <h2>Garmin 認証が完了しました</h2>
+      <p>userId: <strong>${userId || '（取得失敗）'}</strong></p>
+    `);
   } catch (error) {
     console.error("Access Token Error:", error.response?.data || error.message);
     res.status(500).send("OAuth access_token failed: " + error.message);
