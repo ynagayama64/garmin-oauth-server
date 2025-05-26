@@ -22,7 +22,7 @@ const oauth = OAuth({
   },
 });
 
-// トップページ（テスト用）
+// トップページ
 app.get("/", (req, res) => {
   res.send(`
     <h1>Garmin OAuth Server is running.</h1>
@@ -41,69 +41,19 @@ app.get("/auth/start", async (req, res) => {
 
   try {
     const response = await axios.post(requestData.url, null, { headers });
+
+    // ✅ レスポンスのログ出力（Renderログで確認可能）
+    console.log("=== Garmin request_token response ===");
+    console.log(response.data);
+
     const params = new URLSearchParams(response.data);
     const token = params.get("oauth_token");
     const secret = params.get("oauth_token_secret");
 
-    // secretをURLに含めてGarminにリダイレクト（Render対策）
+    console.log("oauth_token:", token);
+    console.log("oauth_token_secret:", secret);
+
     res.redirect(`https://connect.garmin.com/oauthConfirm?oauth_token=${token}&secret=${encodeURIComponent(secret)}`);
   } catch (error) {
     console.error("Request Token Error:", error.response?.data || error.message);
-    res.status(500).send("OAuth request_token failed: " + error.message);
-  }
-});
-
-// 認証後コールバック
-app.get("/auth/callback", async (req, res) => {
-  const { oauth_token, oauth_verifier, secret } = req.query;
-
-  if (!oauth_token || !oauth_verifier || !secret) {
-    return res.status(400).send("Missing required OAuth parameters.");
-  }
-
-  const tokenSecret = secret;
-
-  const requestData = {
-    url: "https://connectapi.garmin.com/oauth-service/oauth/access_token",
-    method: "POST",
-  };
-
-  const headers = oauth.toHeader(
-    oauth.authorize(requestData, {
-      key: oauth_token,
-      secret: tokenSecret,
-    })
-  );
-
-  const urlWithVerifier = `${requestData.url}?oauth_verifier=${oauth_verifier}&oauth_token=${oauth_token}`;
-
-  try {
-    const response = await axios.post(urlWithVerifier, null, {
-      headers: {
-        ...headers,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-    });
-
-    const params = new URLSearchParams(response.data);
-    const userId = params.get("userID") || params.get("user_id");
-
-    // Google Apps Script に送信
-    if (userId) {
-      await axios.post(webhookURL, { userId });
-    }
-
-    res.send(`
-      <h2>Garmin 認証が完了しました</h2>
-      <p>userId: <strong>${userId || '（取得失敗）'}</strong></p>
-    `);
-  } catch (error) {
-    console.error("Access Token Error:", error.response?.data || error.message);
-    res.status(500).send("OAuth access_token failed: " + error.message);
-  }
-});
-
-// サーバー起動
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+    res.status(500).send("OAuth request_token failed: " + error.me_
