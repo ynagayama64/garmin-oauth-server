@@ -8,7 +8,7 @@ const port = process.env.PORT || 3000;
 
 const CONSUMER_KEY = process.env.CONSUMER_KEY;
 const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
-const CALLBACK_URL = process.env.CALLBACK_URL || "https://garmin-auth-server/auth/callback";
+const CALLBACK_URL = process.env.CALLBACK_URL || "https://garmin-oauth-server.onrender.com/auth/callback";
 
 // ←★ここにWebhook URLを設定
 const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec";
