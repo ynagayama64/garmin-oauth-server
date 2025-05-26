@@ -1,33 +1,7 @@
-const express = require("express");
-const OAuth = require("oauth-1.0a");
-const crypto = require("crypto");
-const axios = require("axios");
-
-const app = express();
-const port = process.env.PORT || 3000;
-
-const CONSUMER_KEY = process.env.CONSUMER_KEY;
-const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
-const CALLBACK_URL = process.env.CALLBACK_URL || "https://garmin-oauth-server.onrender.com/auth/callback";
-
-// ←★ここにWebhook URLを設定
-const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec";
-
-const oauth = OAuth({
-  consumer: { key: CONSUMER_KEY, secret: CONSUMER_SECRET },
-  signature_method: "HMAC-SHA1",
-  hash_function(base_string, key) {
-    return crypto.createHmac("sha1", key).update(base_string).digest("base64");
-  },
-});
-
-let requestTokenStore = {};
-
 app.get("/auth/start", async (req, res) => {
   const requestData = {
-    url: "https://connectapi.garmin.com/oauth-service/oauth/request_token",
+    url: `https://connectapi.garmin.com/oauth-service/oauth/request_token?oauth_callback=${encodeURIComponent(CALLBACK_URL)}`,
     method: "POST",
-    data: { oauth_callback: CALLBACK_URL },
   };
 
   const headers = oauth.toHeader(oauth.authorize(requestData));
@@ -40,6 +14,7 @@ app.get("/auth/start", async (req, res) => {
     requestTokenStore[token] = secret;
     res.redirect(`https://connect.garmin.com/oauthConfirm?oauth_token=${token}`);
   } catch (error) {
+    console.error("Request Token Error:", error.response?.data || error.message);
     res.status(500).send("OAuth request_token failed: " + error.message);
   }
 });
@@ -51,7 +26,6 @@ app.get("/auth/callback", async (req, res) => {
   const requestData = {
     url: "https://connectapi.garmin.com/oauth-service/oauth/access_token",
     method: "POST",
-    data: { oauth_token, oauth_verifier },
   };
 
   const headers = oauth.toHeader(
@@ -61,23 +35,21 @@ app.get("/auth/callback", async (req, res) => {
     })
   );
 
+  // Garminでは oauth_verifier はヘッダーではなくURLに含めると安定
+  const urlWithVerifier = `${requestData.url}?oauth_verifier=${oauth_verifier}&oauth_token=${oauth_token}`;
+
   try {
-    const response = await axios.post(requestData.url, null, { headers });
-    console.log("Access Token Response:", response.data);
+    const response = await axios.post(urlWithVerifier, null, { headers });
     const params = new URLSearchParams(response.data);
     const userId = params.get("userID") || params.get("user_id");
 
-    // Google Sheets に送信
     if (userId) {
       await axios.post(webhookURL, { userId });
     }
 
     res.send(`<h2>Garmin 認証が完了しました</h2><p>userId: <strong>${userId}</strong></p>`);
   } catch (error) {
+    console.error("Access Token Error:", error.response?.data || error.message);
     res.status(500).send("OAuth access_token failed: " + error.message);
   }
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
 });
