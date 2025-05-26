@@ -22,10 +22,7 @@ const oauth = OAuth({
   },
 });
 
-// リクエストトークンとシークレットを一時保存
-let requestTokenStore = {};
-
-// トップページ（初期表示）
+// トップページ（テスト用）
 app.get("/", (req, res) => {
   res.send(`
     <h1>Garmin OAuth Server is running.</h1>
@@ -47,18 +44,24 @@ app.get("/auth/start", async (req, res) => {
     const params = new URLSearchParams(response.data);
     const token = params.get("oauth_token");
     const secret = params.get("oauth_token_secret");
-    requestTokenStore[token] = secret;
-    res.redirect(`https://connect.garmin.com/oauthConfirm?oauth_token=${token}`);
+
+    // secretをURLに含めてGarminにリダイレクト（Render対策）
+    res.redirect(`https://connect.garmin.com/oauthConfirm?oauth_token=${token}&secret=${encodeURIComponent(secret)}`);
   } catch (error) {
     console.error("Request Token Error:", error.response?.data || error.message);
     res.status(500).send("OAuth request_token failed: " + error.message);
   }
 });
 
-// 認証コールバック
+// 認証後コールバック
 app.get("/auth/callback", async (req, res) => {
-  const { oauth_token, oauth_verifier } = req.query;
-  const tokenSecret = requestTokenStore[oauth_token];
+  const { oauth_token, oauth_verifier, secret } = req.query;
+
+  if (!oauth_token || !oauth_verifier || !secret) {
+    return res.status(400).send("Missing required OAuth parameters.");
+  }
+
+  const tokenSecret = secret;
 
   const requestData = {
     url: "https://connectapi.garmin.com/oauth-service/oauth/access_token",
@@ -72,16 +75,20 @@ app.get("/auth/callback", async (req, res) => {
     })
   );
 
-  // Garminでは oauth_verifier はURLに含めるのが安定
   const urlWithVerifier = `${requestData.url}?oauth_verifier=${oauth_verifier}&oauth_token=${oauth_token}`;
 
   try {
-    const response = await axios.post(urlWithVerifier, null, { headers });
-    console.log("Access Token Response:", response.data);
+    const response = await axios.post(urlWithVerifier, null, {
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
     const params = new URLSearchParams(response.data);
     const userId = params.get("userID") || params.get("user_id");
 
-    // Google Apps Script へ userId を送信
+    // Google Apps Script に送信
     if (userId) {
       await axios.post(webhookURL, { userId });
     }
