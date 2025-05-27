@@ -11,7 +11,8 @@ const CONSUMER_SECRET = process.env.CONSUMER_SECRET;
 const CALLBACK_URL = process.env.CALLBACK_URL || "https://garmin-oauth-server.onrender.com/auth/callback";
 
 // あなたのGoogle Apps ScriptのWebhook URL
-const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec"; // ★あなたのGAS WebアプリURLに置き換えてください
+// このURLはGASをWebアプリとしてデプロイした際に取得したURLに置き換えてください。
+const webhookURL = "https://script.google.com/macros/s/AKfycbzTfMKQCekvLOxfe6tNmL1c30bC3kpCSQaHVRZGsi2SWqKNh5jIJpQi-MUzzV5Y_v6vXw/exec";
 
 // OAuth初期化
 const oauth = OAuth({
@@ -22,12 +23,14 @@ const oauth = OAuth({
   },
 });
 
+// リクエストトークンシークレットを一時的に保存するストア (メモリ上)
+// サーバーが再起動すると失われるため、本番環境では永続化が必要です
 let requestTokenStore = {};
 
 // Step 1: 認証スタート
 app.get("/auth/start", async (req, res) => {
   const request_data = {
-    // ★ ここを修正: GarminのOAuth Request Tokenエンドポイント
+    // GarminのOAuth Request Tokenエンドポイント (connectapi.garmin.com に修正済み)
     url: "https://connectapi.garmin.com/oauth-service/oauth/request_token",
     method: "POST",
     data: { oauth_callback: CALLBACK_URL },
@@ -61,7 +64,7 @@ app.get("/auth/callback", async (req, res) => {
   }
 
   const request_data = {
-    // ★ ここを修正: GarminのOAuth Access Tokenエンドポイント
+    // GarminのOAuth Access Tokenエンドポイント (connectapi.garmin.com に修正済み)
     url: "https://connectapi.garmin.com/oauth-service/oauth/access_token",
     method: "POST",
     data: { oauth_token, oauth_verifier },
@@ -71,16 +74,23 @@ app.get("/auth/callback", async (req, res) => {
 
   try {
     const response = await axios.post(request_data.url, null, { headers });
+    
+    // ★ここを追加：Garminからのアクセストークン応答データ全体をログに出力します。
+    // この情報が、userIdがnullになる原因特定に役立ちます。
+    console.log("Garmin Access Token Response Data:", response.data); 
+    
     const params = new URLSearchParams(response.data);
 
-    const userId = params.get("encoded_user_id");
+    // 現状userIdがnullになる原因を探るため、response.dataの内容を確認します。
+    // もしログで`encoded_user_id`以外のキー名が見つかれば、ここを修正します。
+    const userId = params.get("encoded_user_id"); 
     const accessToken = params.get("oauth_token");
     const accessTokenSecret = params.get("oauth_token_secret");
 
     // リクエストトークンシークレットは使用済みなので削除
     delete requestTokenStore[oauth_token];
 
-    // --- Webhook購読処理の追加 ---
+    // --- Webhook購読処理 ---
     // Webhook SubscriptionのURLはHealth APIのドキュメントで別途確認が必要ですが、
     // 現在のところapi.garmin.comのままが一般的です。
     const subscriptionUrl = `https://api.garmin.com/wellness-api/rest/user/${userId}/webhook-subscription`;
@@ -92,8 +102,13 @@ app.get("/auth/callback", async (req, res) => {
     );
 
     try {
-      await axios.post(subscriptionUrl, {}, { headers: subscriptionHeaders });
-      console.log(`Webhook subscription success for userId: ${userId}`);
+      // userIdがnullの場合は、Webhook購読を試みないようにする（エラーを防ぐため）
+      if (userId) {
+        await axios.post(subscriptionUrl, {}, { headers: subscriptionHeaders });
+        console.log(`Webhook subscription success for userId: ${userId}`);
+      } else {
+        console.warn("Webhook subscription skipped: userId is null.");
+      }
     } catch (subscriptionErr) {
       console.error("Webhook subscription failed:", subscriptionErr.response?.data || subscriptionErr.message);
       // Webhook購読の失敗は、認証フローを中断させないが、ログで把握する
@@ -102,7 +117,7 @@ app.get("/auth/callback", async (req, res) => {
     // --- Google Apps Scriptにアクセストークン情報送信 ---
     await axios.post(webhookURL, {
       type: "oauth_completion", // GAS側でOAuth完了イベントと識別するためのフラグ
-      userId,
+      userId, // nullの可能性があるが、そのままGASに送信してGAS側でログを確認
       accessToken,
       accessTokenSecret,
     });
